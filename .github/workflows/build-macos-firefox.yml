@@ -1,0 +1,100 @@
+name: Build AIBG Antidetect Firefox (macOS Intel & Apple Silicon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Source branch/tag in siwtom/aibg-antidetect-engine"
+        required: true
+        default: "main"
+      arch:
+        description: "Target macOS Architecture (arm64, x64, or both)"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - arm64
+          - x64
+
+permissions:
+  contents: write
+
+jobs:
+  build-firefox-macos:
+    name: Build AIBG Firefox macOS (${{ matrix.arch }})
+    runs-on: macos-15
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ github.event.inputs.arch == 'arm64' && fromJson('["arm64"]') || (github.event.inputs.arch == 'x64' && fromJson('["x64"]') || fromJson('["arm64", "x64"]')) }}
+
+    steps:
+      - name: Checkout AIBG Antidetect Core Engine
+        uses: actions/checkout@v4
+        with:
+          repository: siwtom/aibg-antidetect-engine
+          token: ${{ secrets.AIBG_ENGINE_TOKEN }}
+          ref: ${{ github.event.inputs.source_ref || 'main' }}
+
+      - name: Install Build Dependencies via Homebrew
+        run: |
+          brew install python@3.11 node cbindgen nasm yasm pkg-config sccache
+          echo "/opt/homebrew/opt/python@3.11/libexec/bin" >> $GITHUB_PATH
+          echo "/opt/homebrew/opt/rustup/bin" >> $GITHUB_PATH
+          echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          /opt/homebrew/opt/rustup/bin/rustup target add aarch64-apple-darwin x86_64-apple-darwin || rustup target add aarch64-apple-darwin x86_64-apple-darwin || true
+
+      - name: Cache Rust & sccache Build Artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.mozbuild
+            ~/Library/Caches/Mozilla.sccache
+          key: aibg-firefox-macos-${{ matrix.arch }}-${{ hashFiles('patches/firefox/BASE_COMMIT.txt') }}
+
+      - name: Clone Upstream Firefox Base & Apply AIBG Overlays
+        run: |
+          chmod +x macos/build_mac_firefox.sh
+          ./macos/build_mac_firefox.sh "${{ matrix.arch }}" "$RUNNER_TEMP/firefox-src"
+
+      - name: Upload macOS DMG & Signed App ZIP Artifact (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIBG-Firefox-macOS-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/firefox-src/obj-*-apple-darwin-release/dist/*.dmg
+            ${{ runner.temp }}/firefox-src/obj-*-apple-darwin-release/dist/*.zip
+            ${{ runner.temp }}/firefox-src/obj-*-apple-darwin-release/dist/*.tar.gz
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish to GitHub Releases (Public & Engine)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENGINE_TOKEN: ${{ secrets.AIBG_ENGINE_TOKEN }}
+        run: |
+          TAG_NAME="v161.0-macos"
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || \
+            gh release create "$TAG_NAME" \
+              --title "AIBG Antidetect Firefox Engine — macOS (Intel x64 & Apple Silicon ARM64)" \
+              --notes "Automated macOS Release build of AIBG Antidetect Firefox Engine (v161.0a1) with C++ Fingerprint Spoofing, Port-Scan Shield, Storage Quota Jitter, Multi-Provider Video Controller, and FlowKit Job HUD."
+          
+          for f in ${{ runner.temp }}/firefox-src/obj-*-apple-darwin-release/dist/*.dmg ${{ runner.temp }}/firefox-src/obj-*-apple-darwin-release/dist/AIBG-Firefox-macOS-*.zip; do
+            if [ -f "$f" ]; then
+              base=$(basename "$f")
+              ext="${base##*.}"
+              name="${base%.*}"
+              target_file="${{ runner.temp }}/${name}-${{ matrix.arch }}.${ext}"
+              cp "$f" "$target_file"
+              gh release upload "$TAG_NAME" "$target_file" --clobber
+              
+              if [ -n "$ENGINE_TOKEN" ]; then
+                GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$target_file" --repo siwtom/aibg-antidetect-engine --clobber || true
+              fi
+            fi
+          done
