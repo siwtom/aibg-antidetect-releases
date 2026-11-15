@@ -76,18 +76,21 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           ENGINE_TOKEN: ${{ secrets.AIBG_ENGINE_TOKEN }}
         run: |
+          PUBLIC_REPO="${{ github.repository }}"
+          ENGINE_REPO="siwtom/aibg-antidetect-engine"
           TAG_NAME="v161.0-macos"
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || \
-            gh release create "$TAG_NAME" \
+          gh release view "$TAG_NAME" --repo "$PUBLIC_REPO" >/dev/null 2>&1 || \
+            gh release create "$TAG_NAME" --repo "$PUBLIC_REPO" \
               --title "AIBG Antidetect Firefox Engine — macOS (Intel x64 & Apple Silicon ARM64)" \
               --notes "Automated macOS Release build of AIBG Antidetect Firefox Engine (v161.0a1) with Microkernel Stealth Enclave, C++ Fingerprint Spoofing, Port-Scan Shield, Storage Quota Jitter, and Native Bridge." || \
-            gh release view "$TAG_NAME" >/dev/null 2>&1
+            gh release view "$TAG_NAME" --repo "$PUBLIC_REPO" >/dev/null 2>&1
 
           if [ -n "$ENGINE_TOKEN" ]; then
-            GH_TOKEN="$ENGINE_TOKEN" gh release view "$TAG_NAME" --repo siwtom/aibg-antidetect-engine >/dev/null 2>&1 || \
-              GH_TOKEN="$ENGINE_TOKEN" gh release create "$TAG_NAME" --repo siwtom/aibg-antidetect-engine \
+            GH_TOKEN="$ENGINE_TOKEN" gh release view "$TAG_NAME" --repo "$ENGINE_REPO" >/dev/null 2>&1 || \
+              GH_TOKEN="$ENGINE_TOKEN" gh release create "$TAG_NAME" --repo "$ENGINE_REPO" \
                 --title "AIBG Antidetect Firefox Engine — macOS (Intel x64 & Apple Silicon ARM64)" \
                 --notes "Automated macOS Release build of AIBG Antidetect Firefox Engine (v161.0a1)." || true
           fi
@@ -96,20 +99,20 @@ jobs:
             if [ -f "$dmg" ]; then
               target_dmg="${{ runner.temp }}/firefox-161.0a1.en-US.mac-${{ matrix.arch }}.dmg"
               cp "$dmg" "$target_dmg"
-              gh release upload "$TAG_NAME" "$target_dmg" --clobber
+              gh release upload "$TAG_NAME" "$target_dmg" --repo "$PUBLIC_REPO" --clobber
               if [ -n "$ENGINE_TOKEN" ]; then
-                GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$target_dmg" --repo siwtom/aibg-antidetect-engine --clobber || true
+                GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$target_dmg" --repo "$ENGINE_REPO" --clobber || true
               fi
             fi
           done
 
           zip_src=$(ls ${{ runner.temp }}/firefox-src/obj-*-apple-darwin-release/dist/AIBG-Firefox-macOS-${{ matrix.arch }}.zip 2>/dev/null | head -n 1 || true)
           if [ -n "$zip_src" ] && [ -f "$zip_src" ]; then
-            gh release upload "$TAG_NAME" "$zip_src" --clobber
+            gh release upload "$TAG_NAME" "$zip_src" --repo "$PUBLIC_REPO" --clobber
             if [ -n "$ENGINE_TOKEN" ]; then
-              GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$zip_src" --repo siwtom/aibg-antidetect-engine --clobber || true
+              GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$zip_src" --repo "$ENGINE_REPO" --clobber || true
               compat_zip="${{ runner.temp }}/AIBG-Firefox-macOS-${{ matrix.arch }}-${{ matrix.arch }}.zip"
               cp "$zip_src" "$compat_zip"
-              GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$compat_zip" --repo siwtom/aibg-antidetect-engine --clobber || true
+              GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$compat_zip" --repo "$ENGINE_REPO" --clobber || true
             fi
           fi

@@ -80,27 +80,30 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           ENGINE_TOKEN: ${{ secrets.AIBG_ENGINE_TOKEN }}
         run: |
+          PUBLIC_REPO="${{ github.repository }}"
+          ENGINE_REPO="siwtom/aibg-antidetect-engine"
           TAG_NAME="v161.0-linux"
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || \
-            gh release create "$TAG_NAME" \
+          gh release view "$TAG_NAME" --repo "$PUBLIC_REPO" >/dev/null 2>&1 || \
+            gh release create "$TAG_NAME" --repo "$PUBLIC_REPO" \
               --title "AIBG Antidetect Firefox Engine — Linux Ultra-Minimal Headless (x86_64 & ARM64)" \
               --notes "Automated Linux Ultra-Minimal Stealth Headless Release of AIBG Antidetect Firefox Engine (v161.0a1) with Microkernel Stealth Enclave, C++ Port-Scan Shield, and Storage Quota Spoofing." || \
-            gh release view "$TAG_NAME" >/dev/null 2>&1
+            gh release view "$TAG_NAME" --repo "$PUBLIC_REPO" >/dev/null 2>&1
 
           if [ -n "$ENGINE_TOKEN" ]; then
-            GH_TOKEN="$ENGINE_TOKEN" gh release view "$TAG_NAME" --repo siwtom/aibg-antidetect-engine >/dev/null 2>&1 || \
-              GH_TOKEN="$ENGINE_TOKEN" gh release create "$TAG_NAME" --repo siwtom/aibg-antidetect-engine \
+            GH_TOKEN="$ENGINE_TOKEN" gh release view "$TAG_NAME" --repo "$ENGINE_REPO" >/dev/null 2>&1 || \
+              GH_TOKEN="$ENGINE_TOKEN" gh release create "$TAG_NAME" --repo "$ENGINE_REPO" \
                 --title "AIBG Antidetect Firefox Engine — Linux Ultra-Minimal Headless (x86_64 & ARM64)" \
                 --notes "Automated Linux Ultra-Minimal Stealth Headless Release of AIBG Antidetect Firefox Engine (v161.0a1)." || true
           fi
 
           for f in ${{ runner.temp }}/firefox-src/obj-*-unknown-linux-gnu-release/dist/minimal/AIBG-Firefox-Linux-Minimal-*; do
             if [ -f "$f" ]; then
-              gh release upload "$TAG_NAME" "$f" --clobber
+              gh release upload "$TAG_NAME" "$f" --repo "$PUBLIC_REPO" --clobber
               if [ -n "$ENGINE_TOKEN" ]; then
-                GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$f" --repo siwtom/aibg-antidetect-engine --clobber || true
+                GH_TOKEN="$ENGINE_TOKEN" gh release upload "$TAG_NAME" "$f" --repo "$ENGINE_REPO" --clobber || true
               fi
             fi
           done
